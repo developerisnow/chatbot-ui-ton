@@ -1,17 +1,66 @@
-import { useState, Fragment } from 'react';
+import { useState, useCallback, useEffect, Fragment } from 'react';
+
 import { Menu, Transition } from '@headlessui/react';
 
+import { isDesktop, isMobile, openLink } from '@/utils/ton';
 import { useTonWallet } from '@/hooks/useTonWallet';
+import { connector, addReturnStrategy } from '@/auth/tonConnect';
+import { isWalletInfoInjectable, WalletInfoInjectable } from '@tonconnect/sdk';
 
-// const AuthHeader = ({ children }: { children: React.ReactNode }) => {
+import AuthModal from './AuthModal';
+
+const useWalletsList = () => {
+    const [walletsList, setWalletsList] = useState(null);
+    const [embeddedWallet, setEmbeddedWallet] = useState(null);
+
+    useEffect(() => {
+        const fetchWalletsList = async () => {
+            const wallets = await connector.getWallets();
+            setWalletsList(wallets);
+            const embedded = wallets.filter(isWalletInfoInjectable).find((wallet: WalletInfoInjectable) => wallet.embedded);
+            setEmbeddedWallet(embedded);
+            console.log('Wallets list', wallets);
+            console.log('Embedded wallet', embedded);
+        };
+
+        fetchWalletsList();
+    }, []);
+
+    return { walletsList, embeddedWallet };
+};
+
 const AuthHeader = () => {
     const wallet = useTonWallet();
+    const { walletsList, embeddedWallet } = useWalletsList();
+
+    const [modalUniversalLink, setModalUniversalLink] = useState('');
     const [isOpen, setIsOpen] = useState(false);
 
-    const handleConnectWallet = () => {
-        // replace with your own logic
-        console.log('Connect wallet clicked');
-    };
+    const handleConnectWallet = useCallback(async () => {
+        // Use loading screen/UI instead (while wallets list is loading)
+        if (!walletsList) {
+            setTimeout(handleConnectWallet, 200);
+        }
+
+        if (!isDesktop() && embeddedWallet) {
+            connector.connect({ jsBridgeKey: embeddedWallet.jsBridgeKey });
+            return;
+        }
+
+        const tonkeeperConnectionSource = {
+            universalLink: walletsList[0].universalLink,
+            bridgeUrl: walletsList[0].bridgeUrl,
+        };
+        console.log('Connecting to Tonkeeper', tonkeeperConnectionSource);
+
+        const universalLink = connector.connect(tonkeeperConnectionSource);
+
+        if (isMobile()) {
+            openLink(addReturnStrategy(universalLink, 'none'), '_blank');
+        } else {
+            setModalUniversalLink(universalLink);
+        }
+    }, [walletsList, embeddedWallet])
 
     const handleLogout = () => {
         // replace with your own logic
@@ -22,8 +71,15 @@ const AuthHeader = () => {
         setIsOpen(!isOpen);
     };
 
+    useEffect(() => {
+        if (modalUniversalLink && wallet) {
+            setModalUniversalLink('');
+        }
+    }, [modalUniversalLink, wallet]);
+
+
     return (
-        <div className="flex items-center justify-end p-6">
+        <div className="flex items-start justify-start p-6">
             {wallet ? (
                 <Menu as="div" className="relative inline-block text-left">
                     <div>
@@ -65,12 +121,24 @@ const AuthHeader = () => {
                     </Transition>
                 </Menu>
             ) : (
-                <button onClick={handleConnectWallet} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
-                    </svg>
-                    Connect Wallet
-                </button>
+                <>
+                    <button
+                        onClick={handleConnectWallet}
+                        className="inline-flex cursor-pointer select-none items-center gap-3 rounded-md border border-white/20 p-3 text-white transition-colors duration-200 hover:bg-gray-500/10"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
+                        </svg>
+                        Connect Wallet
+                    </button>
+                    <AuthModal
+                        open={!!modalUniversalLink}
+                        onOk={() => setModalUniversalLink('')}
+                        onCancel={() => setModalUniversalLink('')}
+                        universalLink={modalUniversalLink}
+                    />
+                </>
+
             )}
         </div>
     );

@@ -40,7 +40,6 @@ import HomeContext from './home.context';
 import { HomeInitialState, initialState } from './home.state';
 
 import { v4 as uuidv4 } from 'uuid';
-import { serialize } from "cookie";
 
 import AuthHeader from '@/components/AuthHeader';
 
@@ -76,8 +75,6 @@ const Home = ({
 		},
 		dispatch,
 	} = contextValue;
-
-	console.log('Home.tsx runnig, apiKey: ', apiKey);
 
 	const stopConversationRef = useRef<boolean>(false);
 
@@ -378,14 +375,13 @@ const Home = ({
 				<main
 					className={`flex h-screen w-screen flex-col text-sm text-white dark:text-white ${lightMode}`}
 				>
-					<AuthHeader />
 					<div className="fixed top-0 w-full sm:hidden">
 						<Navbar
 							selectedConversation={selectedConversation}
 							onNewConversation={handleNewConversation}
 						/>
 					</div>
-
+					
 					<div className="flex h-full w-full pt-[48px] sm:pt-0">
 						<Chatbar />
 
@@ -394,6 +390,7 @@ const Home = ({
 						</div>
 
 						{/* <Promptbar /> */}
+						<AuthHeader />
 					</div>
 				</main>
 			)}
@@ -404,8 +401,6 @@ export default Home;
 
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
-	console.log('getServerSideProps running, context: ', context);
-
 	const defaultModelId =
 		(process.env.DEFAULT_MODEL &&
 			Object.values(OpenAIModelID).includes(
@@ -422,13 +417,6 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 	if (googleApiKey && googleCSEId) {
 		serverSidePluginKeysSet = true;
 	}
-
-	const cookie = serialize("ssr-cookie", "ssr-cookie-value", {
-		httpOnly: true,
-		path: "/",
-	});
-	context.res.setHeader("Set-Cookie", cookie);
-	console.log('Cookies: ', cookie)
 
 	return {
 		props: {

@@ -1,16 +1,20 @@
-import { SendTransactionRequest, TonConnect, UserRejectsError, WalletInfo, WalletInfoInjected } from '@tonconnect/sdk';
+import { SendTransactionRequest, TonConnect, UserRejectsError, WalletInfo, WalletInfoInjectable } from '@tonconnect/sdk';
 import { notification } from 'antd';
 import { isMobile, openLink } from '@/utils/ton';
 
 const dappMetadata = {
-	manifestUrl: 'tonconnect-manifest.json',
+	manifestUrl: '/tonconnect-manifest.json',
 };
 
-export const connector = new TonConnect(dappMetadata);
+let connector;
+if (typeof window !== 'undefined') {
+  connector = new TonConnect(dappMetadata);
+}
+export { connector };
 
 export async function sendTransaction(tx: SendTransactionRequest, wallet: WalletInfo): Promise<{ boc: string }> {
 	try {
-		if ('universalLink' in wallet && !(wallet as WalletInfoInjected).embedded && isMobile()) {
+		if ('universalLink' in wallet && !(wallet as WalletInfoInjectable).embedded && isMobile()) {
 			openLink(addReturnStrategy(wallet.universalLink, 'none'), '_blank');
 		}
 
