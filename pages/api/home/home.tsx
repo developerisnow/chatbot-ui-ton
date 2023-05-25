@@ -12,14 +12,14 @@ import useErrorService from '@/services/errorService';
 import useApiService from '@/services/useApiService';
 
 import {
-  cleanConversationHistory,
-  cleanSelectedConversation,
+	cleanConversationHistory,
+	cleanSelectedConversation,
 } from '@/utils/app/clean';
 import { DEFAULT_SYSTEM_PROMPT, DEFAULT_TEMPERATURE } from '@/utils/app/const';
 import {
-  saveConversation,
-  saveConversations,
-  updateConversation,
+	saveConversation,
+	saveConversations,
+	updateConversation,
 } from '@/utils/app/conversation';
 import { saveFolders } from '@/utils/app/folders';
 import { savePrompts } from '@/utils/app/prompts';
@@ -40,392 +40,409 @@ import HomeContext from './home.context';
 import { HomeInitialState, initialState } from './home.state';
 
 import { v4 as uuidv4 } from 'uuid';
+import { serialize } from "cookie";
+
+import AuthHeader from '@/components/AuthHeader';
 
 interface Props {
-  serverSideApiKeyIsSet: boolean;
-  serverSidePluginKeysSet: boolean;
-  defaultModelId: OpenAIModelID;
+	serverSideApiKeyIsSet: boolean;
+	serverSidePluginKeysSet: boolean;
+	defaultModelId: OpenAIModelID;
 }
 
 const Home = ({
-  serverSideApiKeyIsSet,
-  serverSidePluginKeysSet,
-  defaultModelId,
+	serverSideApiKeyIsSet,
+	serverSidePluginKeysSet,
+	defaultModelId,
 }: Props) => {
-  const { t } = useTranslation('chat');
-  const { getModels } = useApiService();
-  const { getModelsError } = useErrorService();
-  const [initialRender, setInitialRender] = useState<boolean>(true);
+	const { t } = useTranslation('chat');
+	const { getModels } = useApiService();
+	const { getModelsError } = useErrorService();
+	const [initialRender, setInitialRender] = useState<boolean>(true);
 
-  const contextValue = useCreateReducer<HomeInitialState>({
-    initialState,
-  });
+	const contextValue = useCreateReducer<HomeInitialState>({
+		initialState,
+	});
 
-  const {
-    state: {
-      apiKey,
-      lightMode,
-      folders,
-      conversations,
-      selectedConversation,
-      prompts,
-      temperature,
-    },
-    dispatch,
-  } = contextValue;
+	const {
+		state: {
+			apiKey,
+			lightMode,
+			folders,
+			conversations,
+			selectedConversation,
+			prompts,
+			temperature,
+		},
+		dispatch,
+	} = contextValue;
 
-  const stopConversationRef = useRef<boolean>(false);
+	console.log('Home.tsx runnig, apiKey: ', apiKey);
 
-  const { data, error, refetch } = useQuery(
-    ['GetModels', apiKey, serverSideApiKeyIsSet],
-    ({ signal }) => {
-      if (!apiKey && !serverSideApiKeyIsSet) return null;
+	const stopConversationRef = useRef<boolean>(false);
 
-      return getModels(
-        {
-          key: apiKey,
-        },
-        signal,
-      );
-    },
-    { enabled: true, refetchOnMount: false },
-  );
+	const { data, error, refetch } = useQuery(
+		['GetModels', apiKey, serverSideApiKeyIsSet],
+		({ signal }) => {
+			if (!apiKey && !serverSideApiKeyIsSet) return null;
 
-  useEffect(() => {
-    if (data) dispatch({ field: 'models', value: data });
-  }, [data, dispatch]);
+			return getModels(
+				{
+					key: apiKey,
+				},
+				signal,
+			);
+		},
+		{ enabled: true, refetchOnMount: false },
+	);
 
-  useEffect(() => {
-    dispatch({ field: 'modelError', value: getModelsError(error) });
-  }, [dispatch, error, getModelsError]);
+	useEffect(() => {
+		if (data) dispatch({ field: 'models', value: data });
+	}, [data, dispatch]);
 
-  // FETCH MODELS ----------------------------------------------
+	useEffect(() => {
+		dispatch({ field: 'modelError', value: getModelsError(error) });
+	}, [dispatch, error, getModelsError]);
 
-  const handleSelectConversation = (conversation: Conversation) => {
-    dispatch({
-      field: 'selectedConversation',
-      value: conversation,
-    });
+	// FETCH MODELS ----------------------------------------------
 
-    saveConversation(conversation);
-  };
+	const handleSelectConversation = (conversation: Conversation) => {
+		dispatch({
+			field: 'selectedConversation',
+			value: conversation,
+		});
 
-  // FOLDER OPERATIONS  --------------------------------------------
+		saveConversation(conversation);
+	};
 
-  const handleCreateFolder = (name: string, type: FolderType) => {
-    const newFolder: FolderInterface = {
-      id: uuidv4(),
-      name,
-      type,
-    };
+	// FOLDER OPERATIONS  --------------------------------------------
 
-    const updatedFolders = [...folders, newFolder];
+	const handleCreateFolder = (name: string, type: FolderType) => {
+		const newFolder: FolderInterface = {
+			id: uuidv4(),
+			name,
+			type,
+		};
 
-    dispatch({ field: 'folders', value: updatedFolders });
-    saveFolders(updatedFolders);
-  };
+		const updatedFolders = [...folders, newFolder];
 
-  const handleDeleteFolder = (folderId: string) => {
-    const updatedFolders = folders.filter((f) => f.id !== folderId);
-    dispatch({ field: 'folders', value: updatedFolders });
-    saveFolders(updatedFolders);
+		dispatch({ field: 'folders', value: updatedFolders });
+		saveFolders(updatedFolders);
+	};
 
-    const updatedConversations: Conversation[] = conversations.map((c) => {
-      if (c.folderId === folderId) {
-        return {
-          ...c,
-          folderId: null,
-        };
-      }
+	const handleDeleteFolder = (folderId: string) => {
+		const updatedFolders = folders.filter((f) => f.id !== folderId);
+		dispatch({ field: 'folders', value: updatedFolders });
+		saveFolders(updatedFolders);
 
-      return c;
-    });
+		const updatedConversations: Conversation[] = conversations.map((c) => {
+			if (c.folderId === folderId) {
+				return {
+					...c,
+					folderId: null,
+				};
+			}
 
-    dispatch({ field: 'conversations', value: updatedConversations });
-    saveConversations(updatedConversations);
+			return c;
+		});
 
-    const updatedPrompts: Prompt[] = prompts.map((p) => {
-      if (p.folderId === folderId) {
-        return {
-          ...p,
-          folderId: null,
-        };
-      }
+		dispatch({ field: 'conversations', value: updatedConversations });
+		saveConversations(updatedConversations);
 
-      return p;
-    });
+		const updatedPrompts: Prompt[] = prompts.map((p) => {
+			if (p.folderId === folderId) {
+				return {
+					...p,
+					folderId: null,
+				};
+			}
 
-    dispatch({ field: 'prompts', value: updatedPrompts });
-    savePrompts(updatedPrompts);
-  };
+			return p;
+		});
 
-  const handleUpdateFolder = (folderId: string, name: string) => {
-    const updatedFolders = folders.map((f) => {
-      if (f.id === folderId) {
-        return {
-          ...f,
-          name,
-        };
-      }
+		dispatch({ field: 'prompts', value: updatedPrompts });
+		savePrompts(updatedPrompts);
+	};
 
-      return f;
-    });
+	const handleUpdateFolder = (folderId: string, name: string) => {
+		const updatedFolders = folders.map((f) => {
+			if (f.id === folderId) {
+				return {
+					...f,
+					name,
+				};
+			}
 
-    dispatch({ field: 'folders', value: updatedFolders });
+			return f;
+		});
 
-    saveFolders(updatedFolders);
-  };
+		dispatch({ field: 'folders', value: updatedFolders });
 
-  // CONVERSATION OPERATIONS  --------------------------------------------
+		saveFolders(updatedFolders);
+	};
 
-  const handleNewConversation = () => {
-    const lastConversation = conversations[conversations.length - 1];
+	// CONVERSATION OPERATIONS  --------------------------------------------
 
-    const newConversation: Conversation = {
-      id: uuidv4(),
-      name: t('New Conversation'),
-      messages: [],
-      model: lastConversation?.model || {
-        id: OpenAIModels[defaultModelId].id,
-        name: OpenAIModels[defaultModelId].name,
-        maxLength: OpenAIModels[defaultModelId].maxLength,
-        tokenLimit: OpenAIModels[defaultModelId].tokenLimit,
-      },
-      prompt: DEFAULT_SYSTEM_PROMPT,
-      temperature: lastConversation?.temperature ?? DEFAULT_TEMPERATURE,
-      folderId: null,
-    };
+	const handleNewConversation = () => {
+		const lastConversation = conversations[conversations.length - 1];
 
-    const updatedConversations = [...conversations, newConversation];
+		const newConversation: Conversation = {
+			id: uuidv4(),
+			name: t('New Conversation'),
+			messages: [],
+			model: lastConversation?.model || {
+				id: OpenAIModels[defaultModelId].id,
+				name: OpenAIModels[defaultModelId].name,
+				maxLength: OpenAIModels[defaultModelId].maxLength,
+				tokenLimit: OpenAIModels[defaultModelId].tokenLimit,
+			},
+			prompt: DEFAULT_SYSTEM_PROMPT,
+			temperature: lastConversation?.temperature ?? DEFAULT_TEMPERATURE,
+			folderId: null,
+		};
 
-    dispatch({ field: 'selectedConversation', value: newConversation });
-    dispatch({ field: 'conversations', value: updatedConversations });
+		const updatedConversations = [...conversations, newConversation];
 
-    saveConversation(newConversation);
-    saveConversations(updatedConversations);
+		dispatch({ field: 'selectedConversation', value: newConversation });
+		dispatch({ field: 'conversations', value: updatedConversations });
 
-    dispatch({ field: 'loading', value: false });
-  };
+		saveConversation(newConversation);
+		saveConversations(updatedConversations);
 
-  const handleUpdateConversation = (
-    conversation: Conversation,
-    data: KeyValuePair,
-  ) => {
-    const updatedConversation = {
-      ...conversation,
-      [data.key]: data.value,
-    };
+		dispatch({ field: 'loading', value: false });
+	};
 
-    const { single, all } = updateConversation(
-      updatedConversation,
-      conversations,
-    );
+	const handleUpdateConversation = (
+		conversation: Conversation,
+		data: KeyValuePair,
+	) => {
+		const updatedConversation = {
+			...conversation,
+			[data.key]: data.value,
+		};
 
-    dispatch({ field: 'selectedConversation', value: single });
-    dispatch({ field: 'conversations', value: all });
-  };
+		const { single, all } = updateConversation(
+			updatedConversation,
+			conversations,
+		);
 
-  // EFFECTS  --------------------------------------------
+		dispatch({ field: 'selectedConversation', value: single });
+		dispatch({ field: 'conversations', value: all });
+	};
 
-  useEffect(() => {
-    if (window.innerWidth < 640) {
-      dispatch({ field: 'showChatbar', value: false });
-    }
-  }, [selectedConversation]);
+	// EFFECTS  --------------------------------------------
 
-  useEffect(() => {
-    defaultModelId &&
-      dispatch({ field: 'defaultModelId', value: defaultModelId });
-    serverSideApiKeyIsSet &&
-      dispatch({
-        field: 'serverSideApiKeyIsSet',
-        value: serverSideApiKeyIsSet,
-      });
-    serverSidePluginKeysSet &&
-      dispatch({
-        field: 'serverSidePluginKeysSet',
-        value: serverSidePluginKeysSet,
-      });
-  }, [defaultModelId, serverSideApiKeyIsSet, serverSidePluginKeysSet]);
+	useEffect(() => {
+		if (window.innerWidth < 640) {
+			dispatch({ field: 'showChatbar', value: false });
+		}
+	}, [selectedConversation]);
 
-  // ON LOAD --------------------------------------------
+	useEffect(() => {
+		defaultModelId &&
+			dispatch({ field: 'defaultModelId', value: defaultModelId });
+		serverSideApiKeyIsSet &&
+			dispatch({
+				field: 'serverSideApiKeyIsSet',
+				value: serverSideApiKeyIsSet,
+			});
+		serverSidePluginKeysSet &&
+			dispatch({
+				field: 'serverSidePluginKeysSet',
+				value: serverSidePluginKeysSet,
+			});
+	}, [defaultModelId, serverSideApiKeyIsSet, serverSidePluginKeysSet]);
 
-  useEffect(() => {
-    const settings = getSettings();
-    if (settings.theme) {
-      dispatch({
-        field: 'lightMode',
-        value: settings.theme,
-      });
-    }
+	// ON LOAD --------------------------------------------
 
-    const apiKey = localStorage.getItem('apiKey');
+	useEffect(() => {
+		const settings = getSettings();
+		if (settings.theme) {
+			dispatch({
+				field: 'lightMode',
+				value: settings.theme,
+			});
+		}
 
-    if (serverSideApiKeyIsSet) {
-      dispatch({ field: 'apiKey', value: '' });
+		const apiKey = localStorage.getItem('apiKey');
 
-      localStorage.removeItem('apiKey');
-    } else if (apiKey) {
-      dispatch({ field: 'apiKey', value: apiKey });
-    }
+		if (serverSideApiKeyIsSet) {
+			dispatch({ field: 'apiKey', value: '' });
 
-    const pluginKeys = localStorage.getItem('pluginKeys');
-    if (serverSidePluginKeysSet) {
-      dispatch({ field: 'pluginKeys', value: [] });
-      localStorage.removeItem('pluginKeys');
-    } else if (pluginKeys) {
-      dispatch({ field: 'pluginKeys', value: pluginKeys });
-    }
+			localStorage.removeItem('apiKey');
+		} else if (apiKey) {
+			dispatch({ field: 'apiKey', value: apiKey });
+		}
 
-    if (window.innerWidth < 640) {
-      dispatch({ field: 'showChatbar', value: false });
-      dispatch({ field: 'showPromptbar', value: false });
-    }
+		const pluginKeys = localStorage.getItem('pluginKeys');
+		if (serverSidePluginKeysSet) {
+			dispatch({ field: 'pluginKeys', value: [] });
+			localStorage.removeItem('pluginKeys');
+		} else if (pluginKeys) {
+			dispatch({ field: 'pluginKeys', value: pluginKeys });
+		}
 
-    const showChatbar = localStorage.getItem('showChatbar');
-    if (showChatbar) {
-      dispatch({ field: 'showChatbar', value: showChatbar === 'true' });
-    }
+		if (window.innerWidth < 640) {
+			dispatch({ field: 'showChatbar', value: false });
+			dispatch({ field: 'showPromptbar', value: false });
+		}
 
-    const showPromptbar = localStorage.getItem('showPromptbar');
-    if (showPromptbar) {
-      dispatch({ field: 'showPromptbar', value: showPromptbar === 'true' });
-    }
+		const showChatbar = localStorage.getItem('showChatbar');
+		if (showChatbar) {
+			dispatch({ field: 'showChatbar', value: showChatbar === 'true' });
+		}
 
-    const folders = localStorage.getItem('folders');
-    if (folders) {
-      dispatch({ field: 'folders', value: JSON.parse(folders) });
-    }
+		const showPromptbar = localStorage.getItem('showPromptbar');
+		if (showPromptbar) {
+			dispatch({ field: 'showPromptbar', value: showPromptbar === 'true' });
+		}
 
-    const prompts = localStorage.getItem('prompts');
-    if (prompts) {
-      dispatch({ field: 'prompts', value: JSON.parse(prompts) });
-    }
+		const folders = localStorage.getItem('folders');
+		if (folders) {
+			dispatch({ field: 'folders', value: JSON.parse(folders) });
+		}
 
-    const conversationHistory = localStorage.getItem('conversationHistory');
-    if (conversationHistory) {
-      const parsedConversationHistory: Conversation[] =
-        JSON.parse(conversationHistory);
-      const cleanedConversationHistory = cleanConversationHistory(
-        parsedConversationHistory,
-      );
+		const prompts = localStorage.getItem('prompts');
+		if (prompts) {
+			dispatch({ field: 'prompts', value: JSON.parse(prompts) });
+		}
 
-      dispatch({ field: 'conversations', value: cleanedConversationHistory });
-    }
+		const conversationHistory = localStorage.getItem('conversationHistory');
+		if (conversationHistory) {
+			const parsedConversationHistory: Conversation[] =
+				JSON.parse(conversationHistory);
+			const cleanedConversationHistory = cleanConversationHistory(
+				parsedConversationHistory,
+			);
 
-    const selectedConversation = localStorage.getItem('selectedConversation');
-    if (selectedConversation) {
-      const parsedSelectedConversation: Conversation =
-        JSON.parse(selectedConversation);
-      const cleanedSelectedConversation = cleanSelectedConversation(
-        parsedSelectedConversation,
-      );
+			dispatch({ field: 'conversations', value: cleanedConversationHistory });
+		}
 
-      dispatch({
-        field: 'selectedConversation',
-        value: cleanedSelectedConversation,
-      });
-    } else {
-      const lastConversation = conversations[conversations.length - 1];
-      dispatch({
-        field: 'selectedConversation',
-        value: {
-          id: uuidv4(),
-          name: t('New Conversation'),
-          messages: [],
-          model: OpenAIModels[defaultModelId],
-          prompt: DEFAULT_SYSTEM_PROMPT,
-          temperature: lastConversation?.temperature ?? DEFAULT_TEMPERATURE,
-          folderId: null,
-        },
-      });
-    }
-  }, [
-    defaultModelId,
-    dispatch,
-    serverSideApiKeyIsSet,
-    serverSidePluginKeysSet,
-  ]);
+		const selectedConversation = localStorage.getItem('selectedConversation');
+		if (selectedConversation) {
+			const parsedSelectedConversation: Conversation =
+				JSON.parse(selectedConversation);
+			const cleanedSelectedConversation = cleanSelectedConversation(
+				parsedSelectedConversation,
+			);
 
-  return (
-    <HomeContext.Provider
-      value={{
-        ...contextValue,
-        handleNewConversation,
-        handleCreateFolder,
-        handleDeleteFolder,
-        handleUpdateFolder,
-        handleSelectConversation,
-        handleUpdateConversation,
-      }}
-    >
-      <Head>
-        <title>Chatbot UI</title>
-        <meta name="description" content="ChatGPT but better." />
-        <meta
-          name="viewport"
-          content="height=device-height ,width=device-width, initial-scale=1, user-scalable=no"
-        />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-      {selectedConversation && (
-        <main
-          className={`flex h-screen w-screen flex-col text-sm text-white dark:text-white ${lightMode}`}
-        >
-          <div className="fixed top-0 w-full sm:hidden">
-            <Navbar
-              selectedConversation={selectedConversation}
-              onNewConversation={handleNewConversation}
-            />
-          </div>
+			dispatch({
+				field: 'selectedConversation',
+				value: cleanedSelectedConversation,
+			});
+		} else {
+			const lastConversation = conversations[conversations.length - 1];
+			dispatch({
+				field: 'selectedConversation',
+				value: {
+					id: uuidv4(),
+					name: t('New Conversation'),
+					messages: [],
+					model: OpenAIModels[defaultModelId],
+					prompt: DEFAULT_SYSTEM_PROMPT,
+					temperature: lastConversation?.temperature ?? DEFAULT_TEMPERATURE,
+					folderId: null,
+				},
+			});
+		}
+	}, [
+		defaultModelId,
+		dispatch,
+		serverSideApiKeyIsSet,
+		serverSidePluginKeysSet,
+	]);
 
-          <div className="flex h-full w-full pt-[48px] sm:pt-0">
-            <Chatbar />
+	return (
+		<HomeContext.Provider
+			value={{
+				...contextValue,
+				handleNewConversation,
+				handleCreateFolder,
+				handleDeleteFolder,
+				handleUpdateFolder,
+				handleSelectConversation,
+				handleUpdateConversation,
+			}}
+		>
+			<Head>
+				<title>Chatbot UI</title>
+				<meta name="description" content="ChatGPT but better." />
+				<meta
+					name="viewport"
+					content="height=device-height ,width=device-width, initial-scale=1, user-scalable=no"
+				/>
+				<link rel="icon" href="/favicon.ico" />
+			</Head>
+			{selectedConversation && (
+				
+				<main
+					className={`flex h-screen w-screen flex-col text-sm text-white dark:text-white ${lightMode}`}
+				>
+					<AuthHeader />
+					<div className="fixed top-0 w-full sm:hidden">
+						<Navbar
+							selectedConversation={selectedConversation}
+							onNewConversation={handleNewConversation}
+						/>
+					</div>
 
-            <div className="flex flex-1">
-              <Chat stopConversationRef={stopConversationRef} />
-            </div>
+					<div className="flex h-full w-full pt-[48px] sm:pt-0">
+						<Chatbar />
 
-            <Promptbar />
-          </div>
-        </main>
-      )}
-    </HomeContext.Provider>
-  );
+						<div className="flex flex-1">
+							<Chat stopConversationRef={stopConversationRef} />
+						</div>
+
+						{/* <Promptbar /> */}
+					</div>
+				</main>
+			)}
+		</HomeContext.Provider>
+	);
 };
 export default Home;
 
-export const getServerSideProps: GetServerSideProps = async ({ locale }) => {
-  const defaultModelId =
-    (process.env.DEFAULT_MODEL &&
-      Object.values(OpenAIModelID).includes(
-        process.env.DEFAULT_MODEL as OpenAIModelID,
-      ) &&
-      process.env.DEFAULT_MODEL) ||
-    fallbackModelID;
 
-  let serverSidePluginKeysSet = false;
+export const getServerSideProps: GetServerSideProps = async (context) => {
+	console.log('getServerSideProps running, context: ', context);
 
-  const googleApiKey = process.env.GOOGLE_API_KEY;
-  const googleCSEId = process.env.GOOGLE_CSE_ID;
+	const defaultModelId =
+		(process.env.DEFAULT_MODEL &&
+			Object.values(OpenAIModelID).includes(
+				process.env.DEFAULT_MODEL as OpenAIModelID,
+			) &&
+			process.env.DEFAULT_MODEL) ||
+		fallbackModelID;
 
-  if (googleApiKey && googleCSEId) {
-    serverSidePluginKeysSet = true;
-  }
+	let serverSidePluginKeysSet = false;
 
-  return {
-    props: {
-      serverSideApiKeyIsSet: !!process.env.OPENAI_API_KEY,
-      defaultModelId,
-      serverSidePluginKeysSet,
-      ...(await serverSideTranslations(locale ?? 'en', [
-        'common',
-        'chat',
-        'sidebar',
-        'markdown',
-        'promptbar',
-        'settings',
-      ])),
-    },
-  };
+	const googleApiKey = process.env.GOOGLE_API_KEY;
+	const googleCSEId = process.env.GOOGLE_CSE_ID;
+
+	if (googleApiKey && googleCSEId) {
+		serverSidePluginKeysSet = true;
+	}
+
+	const cookie = serialize("ssr-cookie", "ssr-cookie-value", {
+		httpOnly: true,
+		path: "/",
+	});
+	context.res.setHeader("Set-Cookie", cookie);
+	console.log('Cookies: ', cookie)
+
+	return {
+		props: {
+			serverSideApiKeyIsSet: !!process.env.OPENAI_API_KEY,
+			defaultModelId,
+			serverSidePluginKeysSet,
+			...(await serverSideTranslations(context.locale ?? 'en', [
+				'common',
+				'chat',
+				'sidebar',
+				'markdown',
+				'promptbar',
+				'settings',
+			])),
+		},
+	};
 };
